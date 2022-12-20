@@ -32,7 +32,7 @@ def inference():
         test_dataset = CustomDataset(dataset, tokenizer, t)
         dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
-        model_path = os.path.join("./output/", model_args.project_name, idx)
+        model_path = os.path.join("./output/", model_args.project_name, str(idx))
         model = AutoModelForSequenceClassification.from_pretrained(model_path)
         model.to(device)
         model.eval()
@@ -56,24 +56,27 @@ def inference():
         pred_answer = np.concatenate(output_pred).tolist()
         output_prob = np.concatenate(output_prob, axis=0).tolist()
         dataset[t] = pred_answer
-        dataset[t] = num_to_label(dataset[t])
+        dataset[t] = num_to_label(dataset[t], t)
         print(f"Finish inference {t}")
 
     return_answer = []
-    for idx in range(len(dataset)):
+    for idx in tqdm(range(len(dataset))):
         answer = (
-            dataset["유형"]
+            dataset["유형"][idx]
             + "-"
-            + dataset["극성"]
+            + dataset["극성"][idx]
             + "-"
-            + dataset["시제"]
+            + dataset["시제"][idx]
             + "-"
-            + dataset["확실성"]
+            + dataset["확실성"][idx]
         )
         return_answer.append(answer)
 
     submission = pd.DataFrame({"ID": dataset["ID"], "label": return_answer})
-    submission.to_csv(os.path.join("./output/", model_args.project_name), index=False)
+    submission.to_csv(
+        os.path.join("./output/", model_args.project_name, "submission.csv"),
+        index=False,
+    )
     print("### INFERENCE FINISH ###")
 
 
