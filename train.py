@@ -12,6 +12,7 @@ from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
+    EarlyStoppingCallback,
     HfArgumentParser,
     set_seed,
 )
@@ -47,11 +48,11 @@ def train():
     for idx, t in enumerate(target):
         print(f"Start Training {t}")
         data[t] = label_to_num(data[t], t)
-        model_config = AutoConfig.from_preptrained(
+        model_config = AutoConfig.from_pretrained(
             pretrained_model_name_or_path=model_args.model_name
         )
         model_config.num_labels = target_num[idx]
-        model = AutoModelForSequenceClassification(
+        model = AutoModelForSequenceClassification.from_pretrained(
             pretrained_model_name_or_path=model_args.model_name, config=model_config
         )
         model.to(device)
@@ -69,19 +70,25 @@ def train():
             data, test_size=0.2, stratify=data[t], random_state=42
         )
 
-        train = CustomDataset(train_dataset, tokenizer)
-        valid = CustomDataset(valid_dataset, tokenizer)
+        train = CustomDataset(train_dataset, tokenizer, t)
+        valid = CustomDataset(valid_dataset, tokenizer, t)
 
         trainer = CustomTrainer(
             model=model,
             args=train_args,
             loss_name=model_args.loss_name,
-            train_data=train,
-            eval_data=valid,
+            train_dataset=train,
+            eval_dataset=valid,
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
         )
+        trainer.train()
         model.save_pretrained(
             os.path.join(train_args.output_dir, model_args.project_name, str(idx))
         )
         wandb.finish()
         print(f"Training {t} finish!")
     print("### TRAINING FINISH ###")
+
+
+if __name__ == "__main__":
+    train()
