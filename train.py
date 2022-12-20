@@ -79,6 +79,7 @@ def train():
             loss_name=model_args.loss_name,
             train_dataset=train,
             eval_dataset=valid,
+            compute_metrics=compute_metrics,
             callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
         )
         trainer.train()
