@@ -21,3 +21,23 @@ def label_to_num(data, label):
             "미래": 2,
         }
     return data.map(label_dict)
+
+
+def num_to_label(data, label):
+    num_dict = {}
+    if label == "유형":
+        num_dict = {0: "사실형", 1: "추론형", 2: "대화형", 3: "예측형"}
+    elif label == "극성":
+        num_dict = {0: "긍정", 1: "부정", 2: "미정"}
+    elif label == "확실성":
+        num_dict = {
+            0: "확실",
+            1: "불확실",
+        }
+    elif label == "시제":
+        num_dict = {
+            0: "과거",
+            1: "현재",
+            2: "미래",
+        }
+    return data.map(num_dict)
