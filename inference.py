@@ -34,12 +34,11 @@ def inference():
             dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
             pred_prob = []
-            for fold_num in range(1, 6):
+            for fold_num in range(1, model_args.fold_num + 1):
                 print(f"--- START INFERENCE FOLD {fold_num} ---")
                 model_path = os.path.join(
                     "./output/",
-                    model_args.project_name,
-                    +"_kfold",
+                    model_args.project_name + "_kfold",
                     str(idx),
                     "fold" + str(fold_num),
                 )
@@ -61,6 +60,11 @@ def inference():
                 output_prob = np.concatenate(output_prob, axis=0).tolist()
                 pred_prob.append(output_prob)
                 print(f"--- FINISH INFERENCE FOLD {fold_num} ---")
+
+            pred_prob = np.sum(pred_prob, axis=0) / model_args.fold_num
+            pred_answer = np.argmax(pred_prob, axis=-1)
+            dataset[t] = pred_answer
+            dataset[t] = num_to_label(dataset[t], t)
 
     else:
         print("### START INFERENCE with Non-KFold ###")
@@ -97,25 +101,33 @@ def inference():
             dataset[t] = num_to_label(dataset[t], t)
             print(f"Finish inference {t}")
 
-        return_answer = []
-        for idx in tqdm(range(len(dataset))):
-            answer = (
-                dataset["유형"][idx]
-                + "-"
-                + dataset["극성"][idx]
-                + "-"
-                + dataset["시제"][idx]
-                + "-"
-                + dataset["확실성"][idx]
-            )
-            return_answer.append(answer)
+    return_answer = []
+    for idx in tqdm(range(len(dataset))):
+        answer = (
+            dataset["유형"][idx]
+            + "-"
+            + dataset["극성"][idx]
+            + "-"
+            + dataset["시제"][idx]
+            + "-"
+            + dataset["확실성"][idx]
+        )
+        return_answer.append(answer)
 
-        submission = pd.DataFrame({"ID": dataset["ID"], "label": return_answer})
+    submission = pd.DataFrame({"ID": dataset["ID"], "label": return_answer})
+    if model_args.k_fold:
+        submission.to_csv(
+            os.path.join(
+                "./output", model_args.project_name + "_kfold", "submission.csv"
+            ),
+            index=False,
+        )
+    else:
         submission.to_csv(
             os.path.join("./output/", model_args.project_name, "submission.csv"),
             index=False,
         )
-        print("### INFERENCE FINISH ###")
+    print("### INFERENCE FINISH ###")
 
 
 if __name__ == "__main__":

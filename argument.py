@@ -5,7 +5,7 @@ from transformers import TrainingArguments
 @dataclass
 class TrainingArguments(TrainingArguments):
     output_dir: str = field(default="./output/")
-    num_train_epochs: int = field(default=10)
+    num_train_epochs: int = field(default=20)
     per_device_train_batch_size: int = field(default=16)
     per_device_eval_batch_size: int = field(default=16)
     overwrite_output_dir: bool = field(default=True)
@@ -28,7 +28,7 @@ class TrainingArguments(TrainingArguments):
 
 @dataclass
 class TrainModelArguments:
-    model_name: str = field(default="bert-base-cased")
+    model_name: str = field(default="klue/bert-base")
     loss_name: str = field(default="focal")
     project_name: str = field(default="baseline")
     data_path: str = field(default="./data/")
