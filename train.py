@@ -28,7 +28,6 @@ def compute_metrics(pred):
 
 
 def train():
-    data = pd.read_csv("./data/train.csv")
     parser = HfArgumentParser((TrainingArguments, TrainModelArguments))
     (train_args, model_args) = parser.parse_args_into_dataclasses()
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -44,51 +43,111 @@ def train():
     target = ["유형", "극성", "시제", "확실성"]
     target_num = [4, 3, 3, 2]
 
-    print("### START TRAINING with Non-KFold ###")
-    for idx, t in enumerate(target):
-        print(f"Start Training {t}")
-        data[t] = label_to_num(data[t], t)
-        model_config = AutoConfig.from_pretrained(
-            pretrained_model_name_or_path=model_args.model_name
-        )
-        model_config.num_labels = target_num[idx]
-        model = AutoModelForSequenceClassification.from_pretrained(
-            pretrained_model_name_or_path=model_args.model_name, config=model_config
-        )
-        model.to(device)
-        model.train()
+    if model_args.k_fold:
+        print("### START TRAINING with KFold ###")
+        for idx, t in enumerate(target):
+            data = pd.read_csv("./data/train_backtrans_" + str(idx) + ".csv")
+            print(f"Start Training {t}")
+            data[t] = label_to_num(data[t], t)
 
-        wandb.init(
-            entity="psrpsj",
-            project="sentence",
-            name=model_args.project_name + "_" + t,
-            tags=[model_args.model_name],
-        )
-        wandb.config.update(train_args)
+            fold = 1
+            k_fold = StratifiedKFold(n_splits=model_args.fold_num, shuffle=False)
+            for train_index, valid_index in k_fold.split(data, data[t]):
+                print(f"--- START Fold {fold} ---")
+                output_dir = os.path.join(
+                    train_args.output_dir,
+                    model_args.project_name + "_kfold",
+                    str(idx),
+                    "fold" + str(fold),
+                )
+                model_config = AutoConfig.from_pretrained(
+                    pretrained_model_name_or_path=model_args.model_name
+                )
+                model_config.num_labels = target_num[idx]
+                model = AutoModelForSequenceClassification.from_pretrained(
+                    pretrained_model_name_or_path=model_args.model_name,
+                    config=model_config,
+                )
+                model.to(device)
+                model.train()
 
-        train_dataset, valid_dataset = train_test_split(
-            data, test_size=0.2, stratify=data[t], random_state=42
-        )
+                wandb.init(
+                    entity="psrpsj",
+                    project="sentence",
+                    name=model_args.project_name + "_" + t + "_kfold_" + str(fold),
+                    tags=[model_args.model_name],
+                )
+                wandb.config.update(train_args)
 
-        train = CustomDataset(train_dataset, tokenizer, t)
-        valid = CustomDataset(valid_dataset, tokenizer, t)
+                train_dataset, valid_dataset = (
+                    data.iloc[train_index],
+                    data.iloc[valid_index],
+                )
+                train = CustomDataset(train_dataset, tokenizer, t)
+                valid = CustomDataset(valid_dataset, tokenizer, t)
 
-        trainer = CustomTrainer(
-            model=model,
-            args=train_args,
-            loss_name=model_args.loss_name,
-            train_dataset=train,
-            eval_dataset=valid,
-            compute_metrics=compute_metrics,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
-        )
-        trainer.train()
-        model.save_pretrained(
-            os.path.join(train_args.output_dir, model_args.project_name, str(idx))
-        )
-        wandb.finish()
-        print(f"Training {t} finish!")
-    print("### TRAINING FINISH ###")
+                trainer = CustomTrainer(
+                    model=model,
+                    args=train_args,
+                    loss_name=model_args.loss_name,
+                    train_dataset=train,
+                    eval_dataset=valid,
+                    compute_metrics=compute_metrics,
+                    callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+                )
+                trainer.train()
+                model.save_pretrained(output_dir)
+                wandb.finish()
+                print(f"--- Fold {fold} finish! ---")
+                fold += 1
+
+    else:
+        print("### START TRAINING with Non-KFold ###")
+        for idx, t in enumerate(target):
+            data = pd.read_csv("./data/train_backtrans_" + str(idx) + ".csv")
+            print(f"Start Training {t}")
+            data[t] = label_to_num(data[t], t)
+            model_config = AutoConfig.from_pretrained(
+                pretrained_model_name_or_path=model_args.model_name
+            )
+            model_config.num_labels = target_num[idx]
+            model = AutoModelForSequenceClassification.from_pretrained(
+                pretrained_model_name_or_path=model_args.model_name, config=model_config
+            )
+            model.to(device)
+            model.train()
+
+            wandb.init(
+                entity="psrpsj",
+                project="sentence",
+                name=model_args.project_name + "_" + t,
+                tags=[model_args.model_name],
+            )
+            wandb.config.update(train_args)
+
+            train_dataset, valid_dataset = train_test_split(
+                data, test_size=0.2, stratify=data[t], random_state=42
+            )
+
+            train = CustomDataset(train_dataset, tokenizer, t)
+            valid = CustomDataset(valid_dataset, tokenizer, t)
+
+            trainer = CustomTrainer(
+                model=model,
+                args=train_args,
+                loss_name=model_args.loss_name,
+                train_dataset=train,
+                eval_dataset=valid,
+                compute_metrics=compute_metrics,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+            )
+            trainer.train()
+            model.save_pretrained(
+                os.path.join(train_args.output_dir, model_args.project_name, str(idx))
+            )
+            wandb.finish()
+            print(f"Training {t} finish!")
+        print("### TRAINING FINISH ###")
 
 
 if __name__ == "__main__":

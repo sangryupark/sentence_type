@@ -33,3 +33,4 @@ class TrainModelArguments:
     project_name: str = field(default="baseline")
     data_path: str = field(default="./data/")
     k_fold: bool = field(default=False)
+    fold_num: int = field(default=5)
