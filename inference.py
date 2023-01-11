@@ -53,6 +53,16 @@ def inference():
                 attention_mask=data["attention_mask"].to(device),
                 token_type_ids=data["token_type_ids"].to(device),
             )
+            logit = output[0]
+            prob = F.softmax(logit, dim=-1).detach().cpu().numpy()
+            logit = logit.detach().cpu().numpy()
+            result = np.argmax(logit, axis=-1)
+            output_pred.append(result)
+            output_prob.append(prob)
+
+        pred_answer = np.concatenate(output_pred).tolist()
+        output_prob = np.concatenate(output_prob, axis=0).tolist()
+        print(pred_answer)
 
     else:
         print("Inference single label model")
