@@ -28,7 +28,7 @@ def inference():
     target = ["유형", "극성", "시제", "확실성"]
     if model_args.multi_label:
         print("Inference Multi label model")
-        for t in range(target):
+        for t in target:
             dataset[t] = [-1] * len(dataset)
         test_dataset = MultiDataset(dataset, tokenizer)
         dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
@@ -44,25 +44,65 @@ def inference():
         model.to(device)
         model.eval()
 
-        output_prob = []
-        output_pred = []
+        type_output_prob = []
+        type_output_pred = []
+        polarity_output_prob = []
+        polarity_output_pred = []
+        tense_output_prob = []
+        tense_output_pred = []
+        certainty_output_prob = []
+        certainty_output_pred = []
 
         for data in tqdm(dataloader):
-            output = model(
+            type_logit, polarity_logit, tense_logit, certainty_logit = model(
                 input_ids=data["input_ids"].to(device),
                 attention_mask=data["attention_mask"].to(device),
                 token_type_ids=data["token_type_ids"].to(device),
             )
-            logit = output[0]
-            prob = F.softmax(logit, dim=-1).detach().cpu().numpy()
-            logit = logit.detach().cpu().numpy()
-            result = np.argmax(logit, axis=-1)
-            output_pred.append(result)
-            output_prob.append(prob)
 
-        pred_answer = np.concatenate(output_pred).tolist()
-        output_prob = np.concatenate(output_prob, axis=0).tolist()
-        print(pred_answer)
+            type_prob = F.softmax(type_logit, dim=-1).detach().cpu().numpy()
+            polarity_prob = F.softmax(polarity_logit, dim=-1).detach().cpu().numpy()
+            tense_prob = F.softmax(tense_logit, dim=-1).detach().cpu().numpy()
+            certainty_prob = F.softmax(certainty_logit, dim=-1).detach().cpu().numpy()
+
+            type_logit = type_logit.detach().cpu().numpy()
+            polarity_logit = polarity_logit.detach().cpu().numpy()
+            tense_logit = tense_logit.detach().cpu().numpy()
+            certainty_logit = certainty_logit.detach().cpu().numpy()
+
+            type_result = np.argmax(type_logit, axis=-1)
+            polarity_result = np.argmax(polarity_logit, axis=-1)
+            tense_result = np.argmax(tense_logit, axis=-1)
+            certainty_result = np.argmax(certainty_logit, axis=-1)
+
+            type_output_pred.append(type_result)
+            type_output_prob.append(type_prob)
+            polarity_output_pred.append(polarity_result)
+            polarity_output_prob.append(polarity_prob)
+            tense_output_pred.append(tense_result)
+            tense_output_prob.append(tense_prob)
+            certainty_output_pred.append(certainty_result)
+            certainty_output_prob.append(certainty_prob)
+
+        type_answer = np.concatenate(type_output_pred).tolist()
+        polarity_answer = np.concatenate(polarity_output_pred).tolist()
+        tense_answer = np.concatenate(tense_output_pred).tolist()
+        certainty_answer = np.concatenate(certainty_output_pred).tolist()
+
+        type_prob = np.concatenate(type_output_prob, axis=0).tolist()
+        polarity_prob = np.concatenate(polarity_output_prob, axis=0).tolist()
+        tense_prob = np.concatenate(tense_output_prob, axis=0).tolist()
+        certainty_prob = np.concatenate(certainty_output_prob, axis=0).tolist()
+
+        dataset["유형"] = type_answer
+        dataset["극성"] = polarity_answer
+        dataset["시제"] = tense_answer
+        dataset["확실성"] = certainty_answer
+
+        for t in target:
+            dataset[t] = num_to_label(dataset[t], t)
+
+        print("Finish Multi label Inference")
 
     else:
         print("Inference single label model")
