@@ -23,7 +23,7 @@ class MultiLabelModel(nn.Module):
             nn.Dropout(p=0.2), nn.Linear(in_features=768, out_features=2)
         )
 
-    def forward(self, input_ids, attention_mask, token_type_ids):
+    def forward(self, input_ids, attention_mask, token_type_ids, labels=None):
         output = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,

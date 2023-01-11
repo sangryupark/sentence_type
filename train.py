@@ -28,6 +28,17 @@ def compute_metrics(pred):
     return {"accuracy": acc, "f1_score": f1}
 
 
+def compute_multi_metrics(pred):
+    label = pred.label_ids
+    preds = pred.predictions
+    acc = []
+    f1 = []
+    for idx in range(4):
+        acc.append(accuracy_score(label[::, idx], preds[idx]))
+        f1.append(f1_score(label[::, idx], preds[idx], average="weighted"))
+    return {"accuracy": sum(acc) / 4, "f1_score": sum(f1) / 4}
+
+
 def train():
     parser = HfArgumentParser((TrainingArguments, TrainModelArguments))
     (train_args, model_args) = parser.parse_args_into_dataclasses()
@@ -77,13 +88,15 @@ def train():
             loss_name=model_args.loss_name,
             train_dataset=train,
             eval_dataset=valid,
-            compute_metrics=compute_metrics,
+            compute_metrics=compute_multi_metrics,
             callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+            device=device,
         )
         trainer.train()
-        model.save_pretrained(
-            os.path.join(train_args.output_dir, model_args.project_name)
-        )
+        output_dir = os.path.join(train_args.output_dir, model_args.project_name)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        torch.save(model.state_dict(), os.path.join(output_dir, "model_state_dict.pt"))
         wandb.finish()
         print("Training Multi label Finish!")
 
