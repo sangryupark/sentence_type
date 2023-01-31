@@ -60,44 +60,104 @@ def train():
         data = pd.read_csv("./data/train.csv")
         for t in target:
             data[t] = label_to_num(data[t], t)
-        model_config = AutoConfig.from_pretrained(
-            pretrained_model_name_or_path=model_args.model_name
-        )
-        model = MultiLabelModel(model_args.model_name, config=model_config)
-        model.to(device)
-        model.train()
 
-        wandb.init(
-            entity="psrpsj",
-            project="sentence",
-            name=model_args.project_name,
-            tags=[model_args.model_name],
-        )
-        wandb.config.update(train_args)
+        if model_args.k_fold:
+            print("### START TRAINING with KFold ###")
 
-        train_dataset, valid_dataset = train_test_split(
-            data, test_size=0.2, random_state=42
-        )
+            fold = 1
+            k_fold = StratifiedKFold(n_splist=model_args.fold_num, shuffle=False)
+            for train_index, valid_index in k_fold.split(data, data["label"]):
+                print(f"--- START Fold {fold} ---")
+                output_dir = os.path.join(
+                    train_args.output_dir,
+                    model_args.project_name + "_kfold",
+                    "fold" + str(fold),
+                )
+                model_config = AutoConfig.from_pretrained(
+                    pretrained_model_name_or_path=model_args.model_name
+                )
+                model = MultiLabelModel(model_args.model_name, config=model_config)
+                model.to(device)
+                model.train()
 
-        train = MultiDataset(train_dataset, tokenizer)
-        valid = MultiDataset(valid_dataset, tokenizer)
+                wandb.init(
+                    entity="psrpsj",
+                    project="sentence",
+                    name=model_args.project_name + "_kfold_" + str(fold),
+                    tags=[model_args.model_name],
+                )
+                wandb.config.update(train_args)
 
-        trainer = MultiLabelTrainer(
-            model=model,
-            args=train_args,
-            loss_name=model_args.loss_name,
-            train_dataset=train,
-            eval_dataset=valid,
-            compute_metrics=compute_multi_metrics,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
-            device=device,
-        )
-        trainer.train()
-        output_dir = os.path.join(train_args.output_dir, model_args.project_name)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        torch.save(model.state_dict(), os.path.join(output_dir, "model_state_dict.pt"))
-        wandb.finish()
+                train_dataset, valid_dataset = (
+                    data.iloc[train_index],
+                    data.iloc[valid_index],
+                )
+                train = MultiDataset(train_dataset, tokenizer)
+                valid = MultiDataset(valid_dataset, tokenizer)
+
+                trainer = MultiLabelTrainer(
+                    model=model,
+                    args=train_args,
+                    loss_name=model_args.loss_name,
+                    train_dataset=train,
+                    eval_dataset=valid,
+                    compute_metrics=compute_multi_metrics,
+                    callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+                    device=device,
+                )
+                trainer.to(device)
+                trainer.train()
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+                torch.save(
+                    model.state_dict(), os.path.join(output_dir, "model_state_dict.pt")
+                )
+                wandb.finish()
+                print(f"--- Fold {fold} finish! ---")
+                fold += 1
+
+        else:
+            print("### START TRAINING with Non-KFold ###")
+            model_config = AutoConfig.from_pretrained(
+                pretrained_model_name_or_path=model_args.model_name
+            )
+            model = MultiLabelModel(model_args.model_name, config=model_config)
+            model.to(device)
+            model.train()
+
+            wandb.init(
+                entity="psrpsj",
+                project="sentence",
+                name=model_args.project_name,
+                tags=[model_args.model_name],
+            )
+            wandb.config.update(train_args)
+
+            train_dataset, valid_dataset = train_test_split(
+                data, test_size=0.2, random_state=42
+            )
+
+            train = MultiDataset(train_dataset, tokenizer)
+            valid = MultiDataset(valid_dataset, tokenizer)
+
+            trainer = MultiLabelTrainer(
+                model=model,
+                args=train_args,
+                loss_name=model_args.loss_name,
+                train_dataset=train,
+                eval_dataset=valid,
+                compute_metrics=compute_multi_metrics,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+                device=device,
+            )
+            trainer.train()
+            output_dir = os.path.join(train_args.output_dir, model_args.project_name)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            torch.save(
+                model.state_dict(), os.path.join(output_dir, "model_state_dict.pt")
+            )
+            wandb.finish()
         print("Training Multi label Finish!")
 
     else:
