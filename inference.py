@@ -32,75 +32,170 @@ def inference():
             dataset[t] = [-1] * len(dataset)
         test_dataset = MultiDataset(dataset, tokenizer)
         dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
-
         model_config = AutoConfig.from_pretrained(
             pretrained_model_name_or_path=model_args.model_name
         )
-        model = MultiLabelModel(model_args.model_name, model_config)
-        output_dir = os.path.join("./output/", model_args.project_name)
-        model.load_state_dict(
-            torch.load(os.path.join(output_dir, "model_state_dict.pt"))
-        )
-        model.to(device)
-        model.eval()
 
-        type_output_prob = []
-        type_output_pred = []
-        polarity_output_prob = []
-        polarity_output_pred = []
-        tense_output_prob = []
-        tense_output_pred = []
-        certainty_output_prob = []
-        certainty_output_pred = []
+        if model_args.k_fold:
+            print("### START INFERENCE with KFold ###")
+            type_pred_prob = []
+            polarity_pred_prob = []
+            tense_pred_prob = []
+            certainty_pred_prob = []
 
-        for data in tqdm(dataloader):
-            type_logit, polarity_logit, tense_logit, certainty_logit = model(
-                input_ids=data["input_ids"].to(device),
-                attention_mask=data["attention_mask"].to(device),
-                token_type_ids=data["token_type_ids"].to(device),
+            for fold_num in range(1, model_args.fold_num + 1):
+                print(f"--- START INFERENCE FOLD {fold_num} ---")
+                model_path = os.path.join(
+                    "./output/",
+                    model_args.project_name + "_kfold",
+                    "fold" + str(fold_num),
+                )
+                model = MultiLabelModel(model_args.model_name, model_config)
+                model.load_state_dict(
+                    torch.load(os.path.join(model_path, "model_state_dict.pt"))
+                )
+                model.to(device)
+                model.eval()
+
+                type_output_prob = []
+                polarity_output_prob = []
+                tense_output_prob = []
+                certainty_output_prob = []
+
+                for data in tqdm(dataloader):
+                    with torch.no_grad():
+                        (
+                            type_logit,
+                            polarity_logit,
+                            tense_logit,
+                            certainty_logit,
+                        ) = model(
+                            input_ids=data["input_ids"].to(device),
+                            attention_mask=data["attention_mask"].to(device),
+                            token_type_ids=data["token_type_ids"].to(device),
+                        )
+                        type_prob = F.softmax(type_logit, dim=-1).detach().cpu().numpy()
+                        polarity_prob = (
+                            F.softmax(polarity_logit, dim=-1).detach().cpu().numpy()
+                        )
+                        tense_prob = (
+                            F.softmax(tense_logit, dim=-1).detach().cpu().numpy()
+                        )
+                        certainty_prob = (
+                            F.softmax(certainty_logit, dim=-1).detach().cpu().numpy()
+                        )
+                        type_output_prob.append(type_prob)
+                        polarity_output_prob.append(polarity_prob)
+                        tense_output_prob.append(tense_prob)
+                        certainty_output_prob.append(certainty_prob)
+
+                type_output_prob = np.concatenate(type_output_prob, axis=0).tolist()
+                polarity_output_prob = np.concatenate(
+                    polarity_output_prob, axis=0
+                ).tolist()
+                tense_output_prob = np.concatenate(tense_output_prob, axis=0).tolist()
+                certainty_output_prob = np.concatenate(
+                    certainty_output_prob, axis=0
+                ).tolist()
+
+                type_pred_prob.append(type_output_prob)
+                polarity_pred_prob.append(polarity_output_prob)
+                tense_pred_prob.append(tense_output_prob)
+                certainty_pred_prob.append(certainty_output_prob)
+                print(f"--- FINISH INFERENCE FOLD {fold_num} ---")
+
+            type_pred_prob = np.sum(type_pred_prob, axis=0) / model_args.fold_num
+            polarity_pred_prob = (
+                np.sum(polarity_pred_prob, axis=0) / model_args.fold_num
+            )
+            tense_pred_prob = np.sum(tense_pred_prob, axis=0) / model_args.fold_num
+            certainty_pred_prob = (
+                np.sum(certainty_pred_prob, axis=0) / model_args.fold_num
             )
 
-            type_prob = F.softmax(type_logit, dim=-1).detach().cpu().numpy()
-            polarity_prob = F.softmax(polarity_logit, dim=-1).detach().cpu().numpy()
-            tense_prob = F.softmax(tense_logit, dim=-1).detach().cpu().numpy()
-            certainty_prob = F.softmax(certainty_logit, dim=-1).detach().cpu().numpy()
+            type_answer = np.argmax(type_pred_prob, axis=-1)
+            polarity_answer = np.argmax(polarity_pred_prob, axis=-1)
+            tense_answer = np.argmax(tense_pred_prob, axis=-1)
+            certainty_answer = np.argmax(certainty_pred_prob, axis=-1)
 
-            type_logit = type_logit.detach().cpu().numpy()
-            polarity_logit = polarity_logit.detach().cpu().numpy()
-            tense_logit = tense_logit.detach().cpu().numpy()
-            certainty_logit = certainty_logit.detach().cpu().numpy()
+            dataset["유형"] = type_answer
+            dataset["극성"] = polarity_answer
+            dataset["시제"] = tense_answer
+            dataset["확실성"] = certainty_answer
 
-            type_result = np.argmax(type_logit, axis=-1)
-            polarity_result = np.argmax(polarity_logit, axis=-1)
-            tense_result = np.argmax(tense_logit, axis=-1)
-            certainty_result = np.argmax(certainty_logit, axis=-1)
+            for t in target:
+                dataset[t] = num_to_label(dataset[t], t)
 
-            type_output_pred.append(type_result)
-            type_output_prob.append(type_prob)
-            polarity_output_pred.append(polarity_result)
-            polarity_output_prob.append(polarity_prob)
-            tense_output_pred.append(tense_result)
-            tense_output_prob.append(tense_prob)
-            certainty_output_pred.append(certainty_result)
-            certainty_output_prob.append(certainty_prob)
+        else:
+            print("### START INFERENCE with Non-KFold ###")
 
-        type_answer = np.concatenate(type_output_pred).tolist()
-        polarity_answer = np.concatenate(polarity_output_pred).tolist()
-        tense_answer = np.concatenate(tense_output_pred).tolist()
-        certainty_answer = np.concatenate(certainty_output_pred).tolist()
+            model = MultiLabelModel(model_args.model_name, model_config)
+            output_dir = os.path.join("./output/", model_args.project_name)
+            model.load_state_dict(
+                torch.load(os.path.join(output_dir, "model_state_dict.pt"))
+            )
+            model.to(device)
+            model.eval()
 
-        type_prob = np.concatenate(type_output_prob, axis=0).tolist()
-        polarity_prob = np.concatenate(polarity_output_prob, axis=0).tolist()
-        tense_prob = np.concatenate(tense_output_prob, axis=0).tolist()
-        certainty_prob = np.concatenate(certainty_output_prob, axis=0).tolist()
+            type_output_prob = []
+            type_output_pred = []
+            polarity_output_prob = []
+            polarity_output_pred = []
+            tense_output_prob = []
+            tense_output_pred = []
+            certainty_output_prob = []
+            certainty_output_pred = []
 
-        dataset["유형"] = type_answer
-        dataset["극성"] = polarity_answer
-        dataset["시제"] = tense_answer
-        dataset["확실성"] = certainty_answer
+            for data in tqdm(dataloader):
+                type_logit, polarity_logit, tense_logit, certainty_logit = model(
+                    input_ids=data["input_ids"].to(device),
+                    attention_mask=data["attention_mask"].to(device),
+                    token_type_ids=data["token_type_ids"].to(device),
+                )
 
-        for t in target:
-            dataset[t] = num_to_label(dataset[t], t)
+                type_prob = F.softmax(type_logit, dim=-1).detach().cpu().numpy()
+                polarity_prob = F.softmax(polarity_logit, dim=-1).detach().cpu().numpy()
+                tense_prob = F.softmax(tense_logit, dim=-1).detach().cpu().numpy()
+                certainty_prob = (
+                    F.softmax(certainty_logit, dim=-1).detach().cpu().numpy()
+                )
+
+                type_logit = type_logit.detach().cpu().numpy()
+                polarity_logit = polarity_logit.detach().cpu().numpy()
+                tense_logit = tense_logit.detach().cpu().numpy()
+                certainty_logit = certainty_logit.detach().cpu().numpy()
+
+                type_result = np.argmax(type_logit, axis=-1)
+                polarity_result = np.argmax(polarity_logit, axis=-1)
+                tense_result = np.argmax(tense_logit, axis=-1)
+                certainty_result = np.argmax(certainty_logit, axis=-1)
+
+                type_output_pred.append(type_result)
+                type_output_prob.append(type_prob)
+                polarity_output_pred.append(polarity_result)
+                polarity_output_prob.append(polarity_prob)
+                tense_output_pred.append(tense_result)
+                tense_output_prob.append(tense_prob)
+                certainty_output_pred.append(certainty_result)
+                certainty_output_prob.append(certainty_prob)
+
+            type_answer = np.concatenate(type_output_pred).tolist()
+            polarity_answer = np.concatenate(polarity_output_pred).tolist()
+            tense_answer = np.concatenate(tense_output_pred).tolist()
+            certainty_answer = np.concatenate(certainty_output_pred).tolist()
+
+            type_prob = np.concatenate(type_output_prob, axis=0).tolist()
+            polarity_prob = np.concatenate(polarity_output_prob, axis=0).tolist()
+            tense_prob = np.concatenate(tense_output_prob, axis=0).tolist()
+            certainty_prob = np.concatenate(certainty_output_prob, axis=0).tolist()
+
+            dataset["유형"] = type_answer
+            dataset["극성"] = polarity_answer
+            dataset["시제"] = tense_answer
+            dataset["확실성"] = certainty_answer
+
+            for t in target:
+                dataset[t] = num_to_label(dataset[t], t)
 
         print("Finish Multi label Inference")
 
