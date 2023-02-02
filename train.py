@@ -7,7 +7,7 @@ from argument import TrainingArguments, TrainModelArguments
 from dataset import CustomDataset, MultiDataset
 from model import MultiLabelModel
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold, KFold, train_test_split
 from trainer import CustomTrainer, MultiLabelTrainer
 from transformers import (
     AutoConfig,
@@ -57,7 +57,7 @@ def train():
 
     if model_args.multi_label:
         print("Training with multi label")
-        data = pd.read_csv("./data/train.csv")
+        data = pd.read_csv("./data/train_total_upsample.csv")
         for t in target:
             data[t] = label_to_num(data[t], t)
 
@@ -65,8 +65,8 @@ def train():
             print("### START TRAINING with KFold ###")
 
             fold = 1
-            k_fold = StratifiedKFold(n_splist=model_args.fold_num, shuffle=False)
-            for train_index, valid_index in k_fold.split(data, data["label"]):
+            k_fold = KFold(n_splits=model_args.fold_num, shuffle=False)
+            for train_index, valid_index in k_fold.split(data):
                 print(f"--- START Fold {fold} ---")
                 output_dir = os.path.join(
                     train_args.output_dir,
@@ -105,7 +105,6 @@ def train():
                     callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
                     device=device,
                 )
-                trainer.to(device)
                 trainer.train()
                 if not os.path.exists(output_dir):
                     os.makedirs(output_dir)
