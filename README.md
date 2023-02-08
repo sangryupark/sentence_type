@@ -1,4 +1,5 @@
-# sentence_type 
+# sentence_type
+[Report](https://sangryu-notes.notion.site/AI-dfe596dd88b24ff9ad17cc173a1f1098)   
 DACON 문장 유형 분류 AI 경진대회
 ## 1. Project Overview
   - 목표
